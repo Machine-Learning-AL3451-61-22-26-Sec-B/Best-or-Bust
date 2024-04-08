@@ -1,70 +1,97 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
+import numpy as np
 
-# Loading Data from a CSV File
-data = pd.DataFrame(data=pd.read_csv('trainingdata.csv'))
-print(data)
+class Node:
+    def __init__(self, attribute):
+        self.attribute = attribute
+        self.children = {}
+        self.prediction = None
 
-# Separating concept features from Target
-concepts = np.array(data.iloc[:,0:-1])
-print(concepts)
+def entropy(y):
+    classes, counts = np.unique(y, return_counts=True)
+    entropy = 0
+    total_samples = len(y)
+    for count in counts:
+        p = count / total_samples
+        entropy -= p * np.log2(p)
+    return entropy
 
-# Isolating target into a separate DataFrame
-# copying last column to target array
-target = np.array(data.iloc[:,-1])
-print(target)
+def information_gain(X, y, attribute):
+    attribute_values = np.unique(X[attribute])
+    total_entropy = entropy(y)
+    weighted_entropy = 0
+    for value in attribute_values:
+        subset_indices = X[attribute] == value
+        subset_entropy = entropy(y[subset_indices])
+        weight = np.sum(subset_indices) / len(y)
+        weighted_entropy += weight * subset_entropy
+    return total_entropy - weighted_entropy
 
-def learn(concepts, target):
-    '''
-    learn() function implements the learning method of the Candidate elimination algorithm.
-    Arguments:
-        concepts - a data frame with all the features
-        target - a data frame with corresponding output values
-    '''
+def id3(X, y, attributes):
+    if len(np.unique(y)) == 1:
+        node = Node(None)
+        node.prediction = y[0]
+        return node
+    if len(attributes) == 0:
+        node = Node(None)
+        node.prediction = np.argmax(np.bincount(y))
+        return node
+    gains = [information_gain(X, y, attribute) for attribute in attributes]
+    best_attribute_index = np.argmax(gains)
+    best_attribute = attributes[best_attribute_index]
+    node = Node(best_attribute)
+    attribute_values = np.unique(X[best_attribute])
+    for value in attribute_values:
+        subset_indices = X[best_attribute] == value
+        subset_X = X[subset_indices].drop(columns=[best_attribute])
+        subset_y = y[subset_indices]
+        if len(subset_y) == 0:
+            node.prediction = np.argmax(np.bincount(y))
+            return node
+        else:
+            new_attributes = attributes.copy()
+            new_attributes.remove(best_attribute)
+            node.children[value] = id3(subset_X, subset_y, new_attributes)
+    return node
 
-    # Initialise S0 with the first instance from concepts
-    specific_h = concepts[0].copy()
-    print("\nInitialization of specific_h and general_h")
-    print(specific_h)
+def predict(root, sample):
+    if root.prediction is not None:
+        return root.prediction
+    attribute_value = sample[root.attribute]
+    if attribute_value not in root.children:
+        return root.prediction
+    return predict(root.children[attribute_value], sample)
 
-    # Initialize general_h with '?' for each attribute
-    general_h = [["?" for _ in range(len(specific_h))] for _ in range(len(specific_h))]
-    print(general_h)
+def main():
+    st.title("ID3 Algorithm with Streamlit")
 
-    # The learning iterations
-    for i, h in enumerate(concepts):
+    st.sidebar.header("Upload Data")
+    uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type=["csv"])
 
-        # Checking if the hypothesis has a positive target
-        if target[i] == "Yes":
-            for x in range(len(specific_h)):
-                # Change values in S & G only if values change
-                if h[x] != specific_h[x]:
-                    specific_h[x] = '?'
-                    general_h[x][x] = '?'
+    if uploaded_file is not None:
+        data = pd.read_csv(uploaded_file)
+        st.write("Data Sample:")
+        st.write(data.head())
 
-        # Checking if the hypothesis has a negative target
-        if target[i] == "No":
-            for x in range(len(specific_h)):
-                # For negative hypothesis change values only in G
-                if h[x] != specific_h[x]:
-                    general_h[x][x] = specific_h[x]
-                else:
-                    general_h[x][x] = '?'
+        st.sidebar.header("Attributes")
+        attributes = st.sidebar.multiselect("Select attributes", data.columns)
 
-        print("\nSteps of Candidate Elimination Algorithm", i+1)
-        print(specific_h)
-        print(general_h)
-    
-    # find indices where we have empty rows, meaning those that are unchanged
-    indices = [i for i, val in enumerate(general_h) if val == ['?', '?', '?', '?', '?', '?']]
-    for i in indices:
-        # remove those rows from general_h
-        general_h.remove(['?', '?', '?', '?', '?', '?'])
-    
-    # Return final values
-    return specific_h, general_h
+        target_attribute = st.sidebar.selectbox("Select target attribute", data.columns)
 
-s_final, g_final = learn(concepts, target)
-print("\nFinal Specific_h:", s_final, sep="\n")
-print("\nFinal General_h:", g_final, sep="\n")
+        if st.sidebar.button("Run ID3 Algorithm"):
+            X = data[attributes]
+            y = data[target_attribute]
+
+            root = id3(X, y, attributes)
+
+            st.write("Decision Tree:")
+            st.write(root)
+
+            st.write("Predictions:")
+            for i, row in data.iterrows():
+                prediction = predict(root, row)
+                st.write(f"Sample {i+1}: Predicted class - {prediction}")
+
+if __name__ == "__main__":
+    main()
