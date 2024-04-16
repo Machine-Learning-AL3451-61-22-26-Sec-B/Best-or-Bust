@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
-data=pd.read_csv('enjoysport.csv')
+data=pd.read_csv('trainingdata.csv')
 concepts=data.values[:,:-1]
 target=data.values[:,-1]
 def learn(concepts, target):
@@ -53,7 +53,7 @@ def learn(concepts, target):
     return specific_h, general_h
 
 def main():
-    file_name = input("enjoysport.csv")
+    file_name = input("trainingdata.csv")
     try:
         data = pd.read_csv(file_name)
         concepts = data.values[:, :-1]
