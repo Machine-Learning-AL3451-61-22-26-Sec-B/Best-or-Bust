@@ -1,54 +1,90 @@
-pip install scikit-learn streamlit
 import streamlit as st
-from sklearn.datasets import load_iris
-from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier, export_text
+import numpy as np
+import pandas as pd
 
-# Load the Iris dataset
-iris = load_iris()
-X, y = iris.data, iris.target
+class Node:
+    def __init__(self, feature=None, value=None, result=None):
+        self.feature = feature
+        self.value = value
+        self.result = result
+        self.children = {}
 
-# Split the dataset into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+def entropy(labels):
+    _, counts = np.unique(labels, return_counts=True)
+    probabilities = counts / len(labels)
+    entropy = -np.sum(probabilities * np.log2(probabilities))
+    return entropy
 
-# Train the decision tree classifier
-clf = DecisionTreeClassifier()
-clf.fit(X_train, y_train)
+def information_gain(data, feature_name, labels):
+    total_entropy = entropy(labels)
+    values, counts = np.unique(data[feature_name], return_counts=True)
+    weighted_entropy = np.sum([(counts[i] / np.sum(counts)) * entropy(labels[data[feature_name] == values[i]]) for i in range(len(values))])
+    information_gain = total_entropy - weighted_entropy
+    return information_gain
 
-# Define function to predict class labels for new samples
-def predict_class(sample):
-    prediction = clf.predict([sample])
-    return iris.target_names[prediction[0]]
+def build_tree(data, labels, features):
+    if len(np.unique(labels)) == 1:
+        return Node(result=labels.iloc[0])
+   
+    if len(features) == 0:
+        return Node(result=labels.mode()[0])
+   
+    max_gain = -1
+    best_feature = None
+    for feature in features:
+        gain = information_gain(data, feature, labels)
+        if gain > max_gain:
+            max_gain = gain
+            best_feature = feature
+   
+    root = Node(feature=best_feature)
+    values = np.unique(data[best_feature])
+    for value in values:
+        sub_data = data[data[best_feature] == value]
+        sub_labels = labels[data[best_feature] == value]
+        if len(sub_data) == 0:
+            root.children[value] = Node(result=labels.mode()[0])
+        else:
+            root.children[value] = build_tree(sub_data, sub_labels, [f for f in features if f != best_feature])
+    return root
 
-# Streamlit web application
+def classify(root, sample):
+    if root.result is not None:
+        return root.result
+    value = sample[root.feature]
+    if value not in root.children:
+        return None
+    return classify(root.children[value], sample)
+
 def main():
-    st.title("ID3 Decision Tree Classifier Demo")
+    st.title("Decision Tree Classifier with ID3 Algorithm")
+   
+    # Sample data
+    data = pd.DataFrame({
+        'Outlook': ['Sunny', 'Sunny', 'Overcast', 'Rainy', 'Rainy', 'Rainy', 'Overcast', 'Sunny', 'Sunny', 'Rainy'],
+        'Temperature': ['Hot', 'Hot', 'Hot', 'Mild', 'Cool', 'Cool', 'Cool', 'Mild', 'Cool', 'Mild'],
+        'Humidity': ['High', 'High', 'High', 'High', 'Normal', 'Normal', 'Normal', 'High', 'Normal', 'Normal'],
+        'Wind': ['Weak', 'Strong', 'Weak', 'Weak', 'Weak', 'Strong', 'Strong', 'Weak', 'Weak', 'Weak'],
+        'PlayTennis': ['No', 'No', 'Yes', 'Yes', 'Yes', 'No', 'Yes', 'No', 'Yes', 'Yes']
+    })
 
-    st.write("""
-    ## Iris Flower Classification
-    This app predicts the Iris flower species based on its features using the ID3 decision tree algorithm.
-    """)
+    labels = data['PlayTennis']
+    features = data.columns[:-1]
 
-    # User input for new sample features
-    st.sidebar.header('Input Features')
-    sepal_length = st.sidebar.slider('Sepal Length', float(X[:, 0].min()), float(X[:, 0].max()), float(X[:, 0].mean()))
-    sepal_width = st.sidebar.slider('Sepal Width', float(X[:, 1].min()), float(X[:, 1].max()), float(X[:, 1].mean()))
-    petal_length = st.sidebar.slider('Petal Length', float(X[:, 2].min()), float(X[:, 2].max()), float(X[:, 2].mean()))
-    petal_width = st.sidebar.slider('Petal Width', float(X[:, 3].min()), float(X[:, 3].max()), float(X[:, 3].mean()))
+    # Build the decision tree
+    root = build_tree(data, labels, features)
 
-    # Display the input features
-    st.write('Input Features:')
-    st.write('Sepal Length:', sepal_length)
-    st.write('Sepal Width:', sepal_width)
-    st.write('Petal Length:', petal_length)
-    st.write('Petal Width:', petal_width)
+    # Collect input from user
+    st.sidebar.header("Input")
+    sample = {}
+    for feature in features:
+        sample[feature] = st.sidebar.selectbox(feature, data[feature].unique())
 
-    # Predict the class label for the new sample
-    sample = [sepal_length, sepal_width, petal_length, petal_width]
-    prediction = predict_class(sample)
+    # Classify the input sample
+    classification = classify(root, sample)
 
-    # Display the predicted class label
-    st.write('Predicted Class Label:', prediction)
+    # Display the result
+    st.write("Predicted class:", classification)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
