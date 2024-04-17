@@ -1,90 +1,64 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
 
-class Node:
-    def __init__(self, feature=None, value=None, result=None):
-        self.feature = feature
-        self.value = value
-        self.result = result
-        self.children = {}
+def candidate_elimination(data, target_attribute):
+  """
+  Implements the Candidate Elimination Algorithm (CEA)
 
-def entropy(labels):
-    _, counts = np.unique(labels, return_counts=True)
-    probabilities = counts / len(labels)
-    entropy = -np.sum(probabilities * np.log2(probabilities))
-    return entropy
+  Args:
+      data (pandas.DataFrame): The dataset containing attributes and target values.
+      target_attribute (str): The name of the target attribute (class label).
 
-def information_gain(data, feature_name, labels):
-    total_entropy = entropy(labels)
-    values, counts = np.unique(data[feature_name], return_counts=True)
-    weighted_entropy = np.sum([(counts[i] / np.sum(counts)) * entropy(labels[data[feature_name] == values[i]]) for i in range(len(values))])
-    information_gain = total_entropy - weighted_entropy
-    return information_gain
+  Returns:
+      tuple: A tuple containing final specific hypothesis as a list and final general hypothesis as a list of lists.
+  """
 
-def build_tree(data, labels, features):
-    if len(np.unique(labels)) == 1:
-        return Node(result=labels.iloc[0])
-   
-    if len(features) == 0:
-        return Node(result=labels.mode()[0])
-   
-    max_gain = -1
-    best_feature = None
-    for feature in features:
-        gain = information_gain(data, feature, labels)
-        if gain > max_gain:
-            max_gain = gain
-            best_feature = feature
-   
-    root = Node(feature=best_feature)
-    values = np.unique(data[best_feature])
-    for value in values:
-        sub_data = data[data[best_feature] == value]
-        sub_labels = labels[data[best_feature] == value]
-        if len(sub_data) == 0:
-            root.children[value] = Node(result=labels.mode()[0])
+  # Initialize specific and general hypotheses
+  specific_h = list(data.iloc[0, :])
+  general_h = [['?' for _ in range(len(specific_h))] for _ in range(len(specific_h))]
+
+  for i, row in data.iterrows():
+    # Update specific hypothesis for positive examples
+    if row[target_attribute] == 'Yes':
+      for j in range(len(specific_h)):
+        if row.iloc[j] != specific_h[j]:
+          specific_h[j] = '?'
+    # Update general hypothesis for negative examples
+    else:
+      for j in range(len(specific_h)):
+        if row.iloc[j] != specific_h[j]:
+          general_h[j][j] = specific_h[j]
         else:
-            root.children[value] = build_tree(sub_data, sub_labels, [f for f in features if f != best_feature])
-    return root
+          general_h[j][j] = '?'
 
-def classify(root, sample):
-    if root.result is not None:
-        return root.result
-    value = sample[root.feature]
-    if value not in root.children:
-        return None
-    return classify(root.children[value], sample)
+  return specific_h, general_h
 
 def main():
-    st.title("Decision Tree Classifier with ID3 Algorithm")
-   
-    # Sample data
-    data = pd.DataFrame({
-        'Outlook': ['Sunny', 'Sunny', 'Overcast', 'Rainy', 'Rainy', 'Rainy', 'Overcast', 'Sunny', 'Sunny', 'Rainy'],
-        'Temperature': ['Hot', 'Hot', 'Hot', 'Mild', 'Cool', 'Cool', 'Cool', 'Mild', 'Cool', 'Mild'],
-        'Humidity': ['High', 'High', 'High', 'High', 'Normal', 'Normal', 'Normal', 'High', 'Normal', 'Normal'],
-        'Wind': ['Weak', 'Strong', 'Weak', 'Weak', 'Weak', 'Strong', 'Strong', 'Weak', 'Weak', 'Weak'],
-        'PlayTennis': ['No', 'No', 'Yes', 'Yes', 'Yes', 'No', 'Yes', 'No', 'Yes', 'Yes']
-    })
+  """
+  Streamlit application entry point
+  """
 
-    labels = data['PlayTennis']
-    features = data.columns[:-1]
+  st.title("Candidate Elimination Algorithm")
 
-    # Build the decision tree
-    root = build_tree(data, labels, features)
+  # Upload dataset
+  uploaded_file = st.file_uploader("Upload dataset (CSV)", type=['csv'])
 
-    # Collect input from user
-    st.sidebar.header("Input")
-    sample = {}
-    for feature in features:
-        sample[feature] = st.sidebar.selectbox(feature, data[feature].unique())
+  if uploaded_file is not None:
+    data = pd.read_csv(uploaded_file)
 
-    # Classify the input sample
-    classification = classify(root, sample)
+    # Select target attribute
+    target_attribute = st.selectbox("Select target attribute", data.columns)
 
-    # Display the result
-    st.write("Predicted class:", classification)
+    # Run CEA and display results
+    if st.button("Run Candidate Elimination"):
+      final_specific_h, final_general_h = candidate_elimination(data.copy(), target_attribute)
 
-if __name__ == "__main__":
-    main()
+      st.subheader("Final Specific Hypothesis:")
+      st.write(final_specific_h)
+
+      st.subheader("Final General Hypothesis:")
+      for row in final_general_h:
+        st.write(row)
+
+if __name__ == '__main__':
+  main()
